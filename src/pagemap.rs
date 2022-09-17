@@ -324,6 +324,33 @@ impl PageMap {
             .collect()
     }
 
+    /// Returns the `/proc/<PID>/pagemap` entry for the specified vpn
+    pub fn pagemap_vpn(&mut self, vpn: u64) -> Result<PageMapEntry> {
+        let mut buf = [0; 8];
+        let mut entry: PageMapEntry;
+
+        self.pmf
+            .seek(SeekFrom::Start(vpn * 8))
+            .map_err(|e| PageMapError::Seek {
+                path: format!("/proc/{}/pagemap", self.pid),
+                source: e,
+            })?;
+        self.pmf
+            .read_exact(&mut buf)
+            .map_err(|e| PageMapError::Read {
+                path: format!("/proc/{}/pagemap", self.pid),
+                source: e,
+            })?;
+        entry = u64::from_ne_bytes(buf).into();
+        if self.kcf.is_some() && self.kff.is_some() {
+            if let Ok(pfn) = entry.pfn() {
+                entry.kpgcn = Some(self.kpagecount(pfn)?);
+                entry.kpgfl = Some(self.kpageflags(pfn)?);
+            }
+        }
+        Ok(entry)
+    }
+
     /// Returns the entries parsed from reading `/proc/<PID>/pagemap` for all pages in the
     /// specified [`VirtualMemoryArea`] of the process at hand.
     pub fn pagemap_vma(&mut self, vma: &VirtualMemoryArea) -> Result<Vec<PageMapEntry>> {
